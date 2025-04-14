@@ -9,7 +9,6 @@
 specified by the [IETF]. It provides a low level API for processing QUIC packets
 and handling connection state. The application is responsible for providing I/O
 (e.g. sockets handling) as well as an event loop with support for timers.
-
 For more information on how quiche came about and some insights into its design
 you can read a [post] on Cloudflare's blog that goes into some more detail.
 
