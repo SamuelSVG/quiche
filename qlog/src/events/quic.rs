@@ -507,6 +507,12 @@ pub enum QuicFrame {
 
         raw: Option<Bytes>,
     },
+    
+    ObservedAddress {
+        sequence_number: u64,
+        ip: Vec<u8>,
+        port: u16,
+    },
 
     Unknown {
         raw_frame_type: u64,

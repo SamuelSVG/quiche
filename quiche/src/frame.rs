@@ -338,12 +338,28 @@ impl Frame {
             0x30 | 0x31 => parse_datagram_frame(frame_type, b)?,
 
             0x9f81a6 | 0x9f81a7 => {
-                let ip_len = if frame_type == 0x9f81a6 { 4 } else { 16 };
+                // TODO
+                let sequence_number = b.get_varint()?; // Lire sequence_number en premier !
+
+                // let ip_len = if (frame_type == 0x9f81a6) && (b.len() == 4) { 4 }
+                // else if (frame_type == 0x9f81a7) && (b.len() == 16) { 16 }
+                // else { return Err(Error::InvalidFrame) };
+
+                let ip_len = if frame_type == 0x9f81a6 { 4 } else {16};
+
+                // Vérification stricte
+                if b.len() < ip_len + 2 {
+                    // Il faut ip_len octets pour l'adresse + 2 octets pour le port
+                    return Err(Error::InvalidFrame);
+                }
+
+                let ip = b.get_bytes(ip_len)?.to_vec();
+                let port = b.get_u16()?;
 
                 Frame::ObservedAddress {
-                    sequence_number: b.get_varint()?,
-                    ip: b.get_bytes(ip_len)?.to_vec(),
-                    port: b.get_u16()?,
+                    sequence_number,
+                    ip,
+                    port
                 }
             },
 
@@ -1069,6 +1085,12 @@ impl Frame {
                 length: *length as u64,
                 raw: None,
             },
+            
+            Frame::ObservedAddress { sequence_number, ip, port } => QuicFrame::ObservedAddress {
+                sequence_number: *sequence_number,
+                ip: ip.clone(),
+                port: *port,
+            },
         }
     }
 }
@@ -1236,6 +1258,10 @@ impl std::fmt::Debug for Frame {
             Frame::DatagramHeader { length } => {
                 write!(f, "DATAGRAM len={length}")?;
             },
+
+            Frame::ObservedAddress { sequence_number,  ip, port } => {
+                write!(f, "OBSERVED ADDRESS sequence_number={sequence_number} ip={ip:02x?} port={port}")?;
+            },
         }
 
         Ok(())
@@ -1400,6 +1426,109 @@ fn parse_datagram_frame(ty: u64, b: &mut octets::Octets) -> Result<Frame> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // #[test]
+    // fn observed_address() {
+    //     let mut d = [42; 128];
+    // 
+    //     let frame = Frame::ObservedAddress {
+    //         sequence_number: 0,
+    //         ip: vec![1, 2, 3, 4],
+    //         port: 1234,
+    //     };
+    // 
+    //     let wire_len = {
+    //         let mut b = octets::OctetsMut::with_slice(&mut d);
+    //         frame.to_bytes(&mut b).unwrap()
+    //     };
+    // 
+    //     assert_eq!(wire_len, 11);
+    // 
+    //     let mut b = octets::Octets::with_slice(&d);
+    //     assert_eq!(Frame::from_bytes(&mut b, packet::Type::Short), Ok(frame));
+    // 
+    //     let mut b = octets::Octets::with_slice(&d);
+    //     assert!(Frame::from_bytes(&mut b, packet::Type::Initial).is_err());
+    // 
+    //     let mut b = octets::Octets::with_slice(&d);
+    //     assert!(Frame::from_bytes(&mut b, packet::Type::ZeroRTT).is_ok());
+    // 
+    //     let mut b = octets::Octets::with_slice(&d);
+    //     assert!(Frame::from_bytes(&mut b, packet::Type::Handshake).is_err());
+    // }
+
+    #[test]
+    fn observed_address_ipv4() {
+        let mut d = [0u8; 128];
+
+        let frame = Frame::ObservedAddress {
+            sequence_number: 42,
+            ip: vec![192, 168, 1, 1], // 4 octets -> IPv4
+            port: 443,
+        };
+
+        let wire_len = {
+            let mut b = octets::OctetsMut::with_slice(&mut d);
+            frame.to_bytes(&mut b).unwrap()
+        };
+        assert_eq!(wire_len, 11);
+
+        // Maintenant on relit ce qu'on a encodé
+        let mut b = octets::Octets::with_slice(&d);
+        let decoded = Frame::from_bytes(&mut b, packet::Type::Short).unwrap();
+
+        assert_eq!(decoded, frame);
+    }
+
+    #[test]
+    fn observed_address_ipv6() {
+        let mut d = [0u8; 256];
+
+        let frame = Frame::ObservedAddress {
+            sequence_number: 1337,
+            ip: vec![
+                0x20, 0x01, 0x0d, 0xb8,
+                0x85, 0xa3, 0x00, 0x00,
+                0x00, 0x00, 0x8a, 0x2e,
+                0x03, 0x70, 0x73, 0x34,
+            ], // 16 octets -> IPv6
+            port: 8443,
+        };
+
+        let wire_len = {
+            let mut b = octets::OctetsMut::with_slice(&mut d);
+            frame.to_bytes(&mut b).unwrap()
+        };
+        assert_eq!(wire_len, 24);
+
+        // Maintenant on relit ce qu'on a encodé
+        let mut b = octets::Octets::with_slice(&d);
+        let decoded = Frame::from_bytes(&mut b, packet::Type::Short).unwrap();
+
+        assert_eq!(decoded, frame);
+    }
+
+    #[test]
+    fn observed_address_invalid_ip_len() {
+        let mut d = [0u8; 128];
+
+        // Simuler une mauvaise frame : dire "je suis IPv4" mais mettre une IP de mauvaise taille
+        let mut b = octets::OctetsMut::with_slice(&mut d);
+
+        // Encoder manuellement un mauvais frame
+        b.put_varint(0x9f81a6).unwrap(); // Type IPv4
+        b.put_varint(1).unwrap(); // Sequence number
+
+        // Mauvaise taille: mettre 5 octets (au lieu de 4 pour IPv4)
+        b.put_bytes(&[192, 168, 1, 1, 42]).unwrap(); // 5 bytes au lieu de 4
+        b.put_u16(443).unwrap(); // Port
+
+        let mut b = octets::Octets::with_slice(&d);
+
+        let res = Frame::from_bytes(&mut b, packet::Type::Short);
+
+        assert_eq!(res, Err(Error::InvalidFrame));
+    }
 
     #[test]
     fn padding() {

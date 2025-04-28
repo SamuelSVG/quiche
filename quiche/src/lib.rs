@@ -7463,6 +7463,8 @@ impl Connection {
                     .dgram_recv_count
                     .saturating_add(1);
             },
+            
+            frame::Frame::ObservedAddress { .. } => unreachable!(),
 
             frame::Frame::DatagramHeader { .. } => unreachable!(),
         }
