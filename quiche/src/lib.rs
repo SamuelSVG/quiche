@@ -8208,6 +8208,8 @@ pub struct TransportParams {
     pub retry_source_connection_id: Option<ConnectionId<'static>>,
     /// DATAGRAM frame extension parameter, if any.
     pub max_datagram_frame_size: Option<u64>,
+    /// Negociating NAT Rebinding usage
+    pub address_discovery: u64,
     /// Unknown peer transport parameters and values, if any.
     pub unknown_params: Option<UnknownTransportParameters>,
     // pub preferred_address: ...,
@@ -8233,6 +8235,7 @@ impl Default for TransportParams {
             initial_source_connection_id: None,
             retry_source_connection_id: None,
             max_datagram_frame_size: None,
+            address_discovery: 0,
             unknown_params: Default::default(),
         }
     }
@@ -8391,6 +8394,16 @@ impl TransportParams {
 
                 0x0020 => {
                     tp.max_datagram_frame_size = Some(val.get_varint()?);
+                },
+
+                0x0030 => {
+                    let value = val.get_varint()?;
+
+                    if value > 2 {
+                        return Err(Error::InvalidTransportParam);
+                    }
+
+                    tp.address_discovery = value;
                 },
 
                 // Track unknown transport parameters specially.
@@ -8562,6 +8575,15 @@ impl TransportParams {
                 octets::varint_len(max_datagram_frame_size),
             )?;
             b.put_varint(max_datagram_frame_size)?;
+        }
+
+        if (tp.address_discovery == 0) | (tp.address_discovery == 1) | (tp.address_discovery == 2) {
+            TransportParams::encode_param(
+                &mut b,
+                0x0030,
+                octets::varint_len(tp.address_discovery),
+            )?;
+            b.put_varint(tp.address_discovery)?;
         }
 
         let out_len = b.off();
@@ -9171,13 +9193,14 @@ mod tests {
             initial_source_connection_id: Some(b"woot woot".to_vec().into()),
             retry_source_connection_id: Some(b"retry".to_vec().into()),
             max_datagram_frame_size: Some(32),
+            address_discovery: 0,
             unknown_params: Default::default(),
         };
 
         let mut raw_params = [42; 256];
         let raw_params =
             TransportParams::encode(&tp, true, &mut raw_params).unwrap();
-        assert_eq!(raw_params.len(), 94);
+        assert_eq!(raw_params.len(), 97);
 
         let new_tp = TransportParams::decode(raw_params, false, None).unwrap();
 
@@ -9202,13 +9225,14 @@ mod tests {
             initial_source_connection_id: Some(b"woot woot".to_vec().into()),
             retry_source_connection_id: None,
             max_datagram_frame_size: Some(32),
+            address_discovery: 0,
             unknown_params: Default::default(),
         };
 
         let mut raw_params = [42; 256];
         let raw_params =
             TransportParams::encode(&tp, false, &mut raw_params).unwrap();
-        assert_eq!(raw_params.len(), 69);
+        assert_eq!(raw_params.len(), 72);
 
         let new_tp = TransportParams::decode(raw_params, true, None).unwrap();
 
@@ -13067,7 +13091,7 @@ mod tests {
             hdr.version,
             &mut buf,
         )
-        .unwrap();
+            .unwrap();
 
         // Client receives Retry and sends new Initial.
         assert_eq!(pipe.client_recv(&mut buf[..len]), Ok(len));
@@ -13085,7 +13109,7 @@ mod tests {
             send_info.from,
             &mut config,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(pipe.server_recv(&mut buf[..len]), Ok(len));
 
         assert_eq!(pipe.advance(), Ok(()));
@@ -13133,7 +13157,7 @@ mod tests {
             hdr.version,
             &mut buf,
         )
-        .unwrap();
+            .unwrap();
 
         // Client receives Retry and sends new Initial.
         assert_eq!(pipe.client_recv(&mut buf[..len]), Ok(len));
@@ -13151,7 +13175,7 @@ mod tests {
             send_info.from,
             &mut config,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(pipe.server_recv(&mut buf[..len]), Ok(len));
 
         // Wait for the client's PTO so it will try to send an Initial again.
@@ -13202,7 +13226,7 @@ mod tests {
             hdr.version,
             &mut buf,
         )
-        .unwrap();
+            .unwrap();
 
         // Client receives Retry and sends new Initial.
         assert_eq!(pipe.client_recv(&mut buf[..len]), Ok(len));
@@ -13262,7 +13286,7 @@ mod tests {
             hdr.version,
             &mut buf,
         )
-        .unwrap();
+            .unwrap();
 
         // Client receives Retry and sends new Initial.
         assert_eq!(pipe.client_recv(&mut buf[..len]), Ok(len));
@@ -13280,7 +13304,7 @@ mod tests {
             from,
             &mut config,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(pipe.server_recv(&mut buf[..len]), Ok(len));
 
         let flight = testing::emit_flight(&mut pipe.server).unwrap();
@@ -13667,7 +13691,7 @@ mod tests {
             &mut pipe.client,
             testing::emit_flight(&mut pipe.server).unwrap(),
         )
-        .unwrap();
+            .unwrap();
 
         let mut buf = [0; 2000];
 
@@ -13732,7 +13756,7 @@ mod tests {
                 &[frame::Frame::Ping { mtu_probe: None }],
                 &mut buf,
             )
-            .unwrap();
+                .unwrap();
 
             pipe.client_recv(&mut buf[..written])
                 .expect("client recv ping");
@@ -15484,7 +15508,7 @@ mod tests {
                 server_addr,
                 &mut client_config,
             )
-            .unwrap(),
+                .unwrap(),
             server: accept(
                 &server_scid,
                 None,
@@ -15492,7 +15516,7 @@ mod tests {
                 client_addr,
                 &mut server_config,
             )
-            .unwrap(),
+                .unwrap(),
         };
 
         // Before handshake
@@ -16213,7 +16237,7 @@ mod tests {
             client_scid_len,
             server_scid_len,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(pipe.handshake(), Ok(()));
 
         let mut c_cids = Vec::new();
@@ -16527,14 +16551,14 @@ mod tests {
                 None,
                 None,
             )
-            .expect("no packet"),
+                .expect("no packet"),
         )
-        .expect("error when processing client packets");
+            .expect("error when processing client packets");
         testing::process_flight(
             &mut pipe.client,
             testing::emit_flight(&mut pipe.server).expect("no packet"),
         )
-        .expect("error when processing client packets");
+            .expect("error when processing client packets");
         let probed_pid = pipe
             .client
             .paths
@@ -17677,7 +17701,7 @@ mod tests {
             None,
             aead,
         )
-        .expect("packet encrypt");
+            .expect("packet encrypt");
         pipe.client.next_pkt_num += 1;
 
         pipe.server
