@@ -184,6 +184,12 @@ pub enum Frame {
     DatagramHeader {
         length: usize,
     },
+
+    ObservedAddress {
+        sequence_number: u64,
+        ip: Vec<u8>,
+        port: u16,
+    },
 }
 
 impl Frame {
@@ -330,6 +336,16 @@ impl Frame {
             0x1e => Frame::HandshakeDone,
 
             0x30 | 0x31 => parse_datagram_frame(frame_type, b)?,
+
+            0x9f81a6 | 0x9f81a7 => {
+                let ip_len = if frame_type == 0x9f81a6 { 4 } else { 16 };
+
+                Frame::ObservedAddress {
+                    sequence_number: b.get_varint()?,
+                    ip: b.get_bytes(ip_len)?.to_vec(),
+                    port: b.get_u16()?,
+                }
+            },
 
             _ => return Err(Error::InvalidFrame),
         };
@@ -593,6 +609,19 @@ impl Frame {
             },
 
             Frame::DatagramHeader { .. } => (),
+
+            Frame::ObservedAddress { sequence_number, ip, port } => {
+                let frame_type = match ip.len() {
+                    4 => 0x9f81a6,
+                    16 => 0x9f81a7,
+                    _ => return Err(Error::InvalidFrame),
+                };
+
+                b.put_varint(frame_type)?;
+                b.put_varint(*sequence_number)?;
+                b.put_bytes(ip)?;
+                b.put_u16(*port)?;
+            },
         }
 
         Ok(before - b.cap())
@@ -807,6 +836,13 @@ impl Frame {
                 1 + // frame type
                 2 + // length, always encode as 2-byte varint
                 *length // data
+            },
+
+            Frame::ObservedAddress { ip, .. } => {
+                1 + // frame type (varint, usually 3 bytes for 0x9f81a6 or 0x9f81a7)
+                    octets::varint_len(0) + // sequence_number (varint, depends on the value)
+                    ip.len() + // 4 (IPv4) or 16 (IPv6)
+                    2 // port (always 2 bytes)
             },
         }
     }
