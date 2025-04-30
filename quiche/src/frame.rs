@@ -338,7 +338,7 @@ impl Frame {
             0x30 | 0x31 => parse_datagram_frame(frame_type, b)?,
 
             0x9f81a6 | 0x9f81a7 => {
-                // TODO
+                // TODO si les addresses sont de mauvaise taille
                 let sequence_number = b.get_varint()?; // Lire sequence_number en premier !
 
                 // let ip_len = if (frame_type == 0x9f81a6) && (b.len() == 4) { 4 }

@@ -816,6 +816,8 @@ pub struct Config {
     disable_dcid_reuse: bool,
 
     track_unknown_transport_params: Option<usize>,
+
+    address_discovery: u8,
 }
 
 // See https://quicwg.org/base-drafts/rfc9000.html#section-15
@@ -886,6 +888,8 @@ impl Config {
             disable_dcid_reuse: false,
 
             track_unknown_transport_params: None,
+
+            address_discovery: 0,
         })
     }
 
@@ -1367,6 +1371,10 @@ impl Config {
     pub fn enable_track_unknown_transport_parameters(&mut self, size: usize) {
         self.track_unknown_transport_params = Some(size);
     }
+
+    pub fn set_address_discovery(&mut self, v: u8) {
+        self.address_discovery = v;
+    }
 }
 
 /// A QUIC connection.
@@ -1596,6 +1604,9 @@ pub struct Connection {
 
     /// The anti-amplification limit factor.
     max_amplification_factor: usize,
+
+    /// Address discovery mode
+    address_discovery: u8,
 }
 
 /// Creates a new server-side connection.
@@ -2044,6 +2055,8 @@ impl Connection {
             stopped_stream_remote_count: 0,
 
             max_amplification_factor: config.max_amplification_factor,
+
+            address_discovery: config.address_discovery,
         };
 
         if let Some(odcid) = odcid {

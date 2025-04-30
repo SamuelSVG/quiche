@@ -54,6 +54,7 @@ pub struct CommonArgs {
     pub qpack_max_table_capacity: Option<u64>,
     pub qpack_blocked_streams: Option<u64>,
     pub initial_cwnd_packets: u64,
+    pub address_discovery: u8,
 }
 
 /// Creates a new `CommonArgs` structure using the provided [`Docopt`].
@@ -190,6 +191,13 @@ impl Args for CommonArgs {
             .get_str("--initial-cwnd-packets")
             .parse::<u64>()
             .unwrap();
+        
+        let address_discovery = args.get_str("--address-discovery");
+        let address_discovery = if !address_discovery.is_empty() {
+            address_discovery.parse::<u8>().unwrap()
+        } else {
+            0
+        };
 
         CommonArgs {
             alpns,
@@ -214,6 +222,7 @@ impl Args for CommonArgs {
             qpack_max_table_capacity,
             qpack_blocked_streams,
             initial_cwnd_packets,
+            address_discovery,
         }
     }
 }
@@ -243,6 +252,7 @@ impl Default for CommonArgs {
             qpack_max_table_capacity: None,
             qpack_blocked_streams: None,
             initial_cwnd_packets: 10,
+            address_discovery: 0,
         }
     }
 }
@@ -289,6 +299,7 @@ Options:
   --session-file PATH      File used to cache a TLS session for resumption.
   --source-port PORT       Source port to use when connecting to the server [default: 0].
   --initial-cwnd-packets PACKETS   The initial congestion window size in terms of packet count [default: 10].
+  --address-discovery ADDRESS_DISCOVERY  Address discovery mode [default: 0].
   -h --help                Show this screen.
 ";
 
