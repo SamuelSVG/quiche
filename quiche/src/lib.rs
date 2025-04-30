@@ -2350,7 +2350,25 @@ impl Connection {
                 &info,
                 recv_pid,
             ) {
-                Ok(v) => v,
+                // TODO possible que ce soit ici qu'il faille implémenter le comportement du observed address
+                Ok(v) => {
+                    // match self.address_discovery {
+                    //     1 => {
+                    //         // If the connection is in address discovery mode,
+                    //         // we need to check if the packet is a response to
+                    //         // our path challenge.
+                    //         if self.is_server && recv_pid.is_some() {
+                    //             let recv_path = self.paths.get_mut(recv_pid.unwrap())?;
+                    //             recv_path.add_challenge_sent(
+                    //                 &buf[len - left..len],
+                    //             );
+                    //         }
+                    //     },
+                    //
+                    //     _ => (),
+                    // }
+                    v
+                },
 
                 Err(Error::Done) => {
                     // If the packet can't be processed or decrypted, check if
@@ -7476,7 +7494,7 @@ impl Connection {
                     .dgram_recv_count
                     .saturating_add(1);
             },
-            
+
             frame::Frame::ObservedAddress { .. } => unreachable!(),
 
             frame::Frame::DatagramHeader { .. } => unreachable!(),
@@ -8695,6 +8713,7 @@ pub mod testing {
             config.set_max_idle_timeout(180_000);
             config.verify_peer(false);
             config.set_ack_delay_exponent(8);
+            config.set_address_discovery(0);
 
             Pipe::with_config(&mut config)
         }
@@ -9186,6 +9205,84 @@ pub mod testing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // #[test]
+    // fn test_send_with_address_discovery_enabled() {
+    //     let scid = quiche::ConnectionId::from_ref(&[0xba; 16]);
+    //
+    //     // Initialisation de la config avec address_discovery activé
+    //     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
+    //     config.set_application_protos(b"\x05hq-29").unwrap();
+    //     config.set_max_idle_timeout(5000);
+    //     config.set_initial_max_data(1000000);
+    //     config.set_initial_max_stream_data_bidi_local(100000);
+    //     config.set_initial_max_streams_bidi(10);
+    //     config.set_disable_active_migration(true);
+    //
+    //     // Active le nouveau champ
+    //     config.address_discovery = true;
+    //
+    //     let mut conn = quiche::connect(Some("test"), &scid, std::net::SocketAddr::from(([127, 0, 0, 1], 4433)), std::net::SocketAddr::from(([127, 0, 0, 1], 1234)), &mut config).unwrap();
+    //
+    //     // Préparation d’un buffer de sortie pour envoyer un paquet
+    //     let mut out = [0; 1350];
+    //     let send_result = conn.send(&mut out);
+    //
+    //     // Vérifie qu'on peut envoyer un paquet sans erreur
+    //     assert!(send_result.is_ok());
+    // }
+
+    // #[test]
+    // /// Tests that the address_discovery configuration is correctly set and passed into the connection.
+    // fn config_address_discovery_enabled() {
+    //     let mut buf = [0; 68452];
+    //
+    //     let mut pipe = testing::Pipe::new().unwrap();
+    //     assert_eq!(pipe.handshake(), Ok(()));
+    //
+    //
+    //     // Client opens unidirectional stream.
+    //     assert_eq!(pipe.client.stream_send(2, b"hello", false), Ok(5));
+    //     assert_eq!(pipe.advance(), Ok(()));
+    //
+    //     // Client sends MAX_STREAM_DATA on local unidirectional stream.
+    //     let frames = [frame::Frame::ObservedAddress {
+    //         sequence_number: 32,
+    //         ip: vec![172, 32, 1, 0],
+    //         port: 12
+    //     }];
+    //
+    //     let pkt_type = packet::Type::Short;
+    //     assert_eq!(
+    //         pipe.send_pkt_to_server(pkt_type, &frames, &mut buf),
+    //         Err(Error::InvalidStreamState(2)),
+    //     );
+        // TODO verif avec assertequal que ip client est reconnue par serveur + après client change d'ip et verif que le serveur a bien maj
+
+        // let scid = ConnectionId::from_ref(&[0xba; 16]);
+        //
+        // let mut config = Config::new(PROTOCOL_VERSION).unwrap();
+        // config.set_application_protos(quiche::h3::APPLICATION_PROTOCOL).unwrap();
+        // config.set_initial_max_data(1000000);
+        // config.set_initial_max_stream_data_bidi_local(100000);
+        // config.set_initial_max_streams_bidi(10);
+        //
+        // // Activate address discovery
+        // config.address_discovery = 0;
+        //
+        // let conn = Connection::new_client(
+        //     Some("test"),
+        //     &scid,
+        //     SocketAddr::from(([127, 0, 0, 1], 12345)),
+        //     SocketAddr::from(([127, 0, 0, 1], 4433)),
+        //     &config,
+        // )
+        //     .unwrap();
+        //
+        // // Check that the connection has address_discovery enabled
+        // assert!(conn.address_discovery_enabled());
+    // }
+
 
     #[test]
     fn transport_params() {
