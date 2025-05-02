@@ -2350,7 +2350,25 @@ impl Connection {
                 &info,
                 recv_pid,
             ) {
-                Ok(v) => v,
+                // TODO possible que ce soit ici qu'il faille implémenter le comportement du observed address
+                Ok(v) => {
+                    // match self.address_discovery {
+                    //     1 => {
+                    //         // If the connection is in address discovery mode,
+                    //         // we need to check if the packet is a response to
+                    //         // our path challenge.
+                    //         if self.is_server && recv_pid.is_some() {
+                    //             let recv_path = self.paths.get_mut(recv_pid.unwrap())?;
+                    //             recv_path.add_challenge_sent(
+                    //                 &buf[len - left..len],
+                    //             );
+                    //         }
+                    //     },
+                    //
+                    //     _ => (),
+                    // }
+                    v
+                },
 
                 Err(Error::Done) => {
                     // If the packet can't be processed or decrypted, check if
@@ -2452,6 +2470,7 @@ impl Connection {
         }
 
         if self.is_closed() || self.is_draining() {
+            println!("testing2");
             return Err(Error::Done);
         }
 
@@ -2565,6 +2584,7 @@ impl Connection {
             // using a different format.
             self.encode_transport_params()?;
 
+            println!("testing11");
             return Err(Error::Done);
         }
 
@@ -2624,6 +2644,7 @@ impl Connection {
             self.pkt_num_spaces[packet::Epoch::Initial].crypto_seal =
                 Some(aead_seal);
 
+            println!("testing15");
             return Err(Error::Done);
         }
 
@@ -2731,7 +2752,7 @@ impl Connection {
                     self.is_server,
                     &self.trace_id,
                 );
-
+                
                 return Err(e);
             },
         };
@@ -2993,6 +3014,7 @@ impl Connection {
 
         if let Some(e) = frame_processing_err {
             // Any frame error is terminal, so now just return.
+            println!("testing23");
             return Err(e);
         }
 
@@ -4518,6 +4540,21 @@ impl Connection {
                 ack_eliciting = true;
                 in_flight = true;
             }
+        }
+
+        if (self.address_discovery == 0) || (self.address_discovery == 2) {
+            let frame = frame::Frame::ObservedAddress {
+                ip_type: 0x9f81a6,
+                sequence_number: 2,
+                ip: vec![172, 120, 20, 0],
+                port: 3535,
+            };
+
+            if push_frame_to_pkt!(b, frames, frame, left) {
+                println!("CA MARCHE DIS DONC");
+                has_data = true;
+            }
+
         }
 
         if ack_eliciting && !pmtud_probe {
@@ -6996,6 +7033,24 @@ impl Connection {
         trace!("{} rx frm {:?}", self.trace_id, frame);
 
         match frame {
+            frame::Frame::ObservedAddress {
+                ip_type, sequence_number, ip, port
+            } => {
+                // if (self.address_discovery == 0) {
+                //     unreachable!()
+                // } else if (self.address_discovery == 1) {
+                //     self;
+                // } else if (self.address_discovery == 2) {
+                //     unreachable!()
+                // } else { return Err(Error::InvalidFrame) }
+                println!(
+                    "Received OBSERVED_ADDRESS seq={} ip={:?} port={}",
+                    sequence_number,
+                    ip,
+                    port
+                );
+            },
+
             frame::Frame::Padding { .. } => (),
 
             frame::Frame::Ping { .. } => (),
@@ -7476,8 +7531,6 @@ impl Connection {
                     .dgram_recv_count
                     .saturating_add(1);
             },
-            
-            frame::Frame::ObservedAddress { .. } => unreachable!(),
 
             frame::Frame::DatagramHeader { .. } => unreachable!(),
         }
@@ -8411,10 +8464,10 @@ impl TransportParams {
                     tp.max_datagram_frame_size = Some(val.get_varint()?);
                 },
 
-                0x0030 => {
+                0x9f81a176 => {
                     let value = val.get_varint()?;
 
-                    if value > 2 {
+                    if value != 0 && value != 1 && value != 2 {
                         return Err(Error::InvalidTransportParam);
                     }
 
@@ -8592,10 +8645,10 @@ impl TransportParams {
             b.put_varint(max_datagram_frame_size)?;
         }
 
-        if (tp.address_discovery == 0) | (tp.address_discovery == 1) | (tp.address_discovery == 2) {
+        if (tp.address_discovery == 0) || (tp.address_discovery == 1) || (tp.address_discovery == 2) {
             TransportParams::encode_param(
                 &mut b,
-                0x0030,
+                0x9f81a176,
                 octets::varint_len(tp.address_discovery),
             )?;
             b.put_varint(tp.address_discovery)?;
@@ -8695,6 +8748,7 @@ pub mod testing {
             config.set_max_idle_timeout(180_000);
             config.verify_peer(false);
             config.set_ack_delay_exponent(8);
+            config.set_address_discovery(0);
 
             Pipe::with_config(&mut config)
         }
@@ -9186,6 +9240,84 @@ pub mod testing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // #[test]
+    // fn test_send_with_address_discovery_enabled() {
+    //     let scid = quiche::ConnectionId::from_ref(&[0xba; 16]);
+    //
+    //     // Initialisation de la config avec address_discovery activé
+    //     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
+    //     config.set_application_protos(b"\x05hq-29").unwrap();
+    //     config.set_max_idle_timeout(5000);
+    //     config.set_initial_max_data(1000000);
+    //     config.set_initial_max_stream_data_bidi_local(100000);
+    //     config.set_initial_max_streams_bidi(10);
+    //     config.set_disable_active_migration(true);
+    //
+    //     // Active le nouveau champ
+    //     config.address_discovery = true;
+    //
+    //     let mut conn = quiche::connect(Some("test"), &scid, std::net::SocketAddr::from(([127, 0, 0, 1], 4433)), std::net::SocketAddr::from(([127, 0, 0, 1], 1234)), &mut config).unwrap();
+    //
+    //     // Préparation d’un buffer de sortie pour envoyer un paquet
+    //     let mut out = [0; 1350];
+    //     let send_result = conn.send(&mut out);
+    //
+    //     // Vérifie qu'on peut envoyer un paquet sans erreur
+    //     assert!(send_result.is_ok());
+    // }
+
+    // #[test]
+    // /// Tests that the address_discovery configuration is correctly set and passed into the connection.
+    // fn config_address_discovery_enabled() {
+    //     let mut buf = [0; 68452];
+    //
+    //     let mut pipe = testing::Pipe::new().unwrap();
+    //     assert_eq!(pipe.handshake(), Ok(()));
+    //
+    //
+    //     // Client opens unidirectional stream.
+    //     assert_eq!(pipe.client.stream_send(2, b"hello", false), Ok(5));
+    //     assert_eq!(pipe.advance(), Ok(()));
+    //
+    //     // Client sends MAX_STREAM_DATA on local unidirectional stream.
+    //     let frames = [frame::Frame::ObservedAddress {
+    //         sequence_number: 32,
+    //         ip: vec![172, 32, 1, 0],
+    //         port: 12
+    //     }];
+    //
+    //     let pkt_type = packet::Type::Short;
+    //     assert_eq!(
+    //         pipe.send_pkt_to_server(pkt_type, &frames, &mut buf),
+    //         Err(Error::InvalidStreamState(2)),
+    //     );
+        // TODO verif avec assertequal que ip client est reconnue par serveur + après client change d'ip et verif que le serveur a bien maj
+
+        // let scid = ConnectionId::from_ref(&[0xba; 16]);
+        //
+        // let mut config = Config::new(PROTOCOL_VERSION).unwrap();
+        // config.set_application_protos(quiche::h3::APPLICATION_PROTOCOL).unwrap();
+        // config.set_initial_max_data(1000000);
+        // config.set_initial_max_stream_data_bidi_local(100000);
+        // config.set_initial_max_streams_bidi(10);
+        //
+        // // Activate address discovery
+        // config.address_discovery = 0;
+        //
+        // let conn = Connection::new_client(
+        //     Some("test"),
+        //     &scid,
+        //     SocketAddr::from(([127, 0, 0, 1], 12345)),
+        //     SocketAddr::from(([127, 0, 0, 1], 4433)),
+        //     &config,
+        // )
+        //     .unwrap();
+        //
+        // // Check that the connection has address_discovery enabled
+        // assert!(conn.address_discovery_enabled());
+    // }
+
 
     #[test]
     fn transport_params() {

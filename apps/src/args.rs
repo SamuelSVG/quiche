@@ -299,7 +299,7 @@ Options:
   --session-file PATH      File used to cache a TLS session for resumption.
   --source-port PORT       Source port to use when connecting to the server [default: 0].
   --initial-cwnd-packets PACKETS   The initial congestion window size in terms of packet count [default: 10].
-  --address-discovery ADDRESS_DISCOVERY  Address discovery mode [default: 0].
+  --address-discovery MODE  Address discovery mode [default: 0].
   -h --help                Show this screen.
 ";
 
