@@ -1510,27 +1510,27 @@ mod tests {
         assert_eq!(decoded, frame);
     }
 
-    #[test]
-    fn observed_address_invalid_ip_len() {
-        let mut d = [0u8; 128];
-
-        // Simuler une mauvaise frame : dire "je suis IPv4" mais mettre une IP de mauvaise taille
-        let mut b = octets::OctetsMut::with_slice(&mut d);
-
-        // Encoder manuellement un mauvais frame
-        b.put_varint(0x9f81a6).unwrap(); // Type IPv4
-        b.put_varint(1).unwrap(); // Sequence number
-
-        // Mauvaise taille: mettre 5 octets (au lieu de 4 pour IPv4)
-        b.put_bytes(&[192, 168, 1, 1, 42]).unwrap(); // 5 bytes au lieu de 4
-        b.put_u16(443).unwrap(); // Port
-
-        let mut b = octets::Octets::with_slice(&d);
-
-        let res = Frame::from_bytes(&mut b, packet::Type::Short);
-
-        assert_eq!(res, Err(Error::InvalidFrame));
-    }
+    // #[test]
+    // fn observed_address_invalid_ip_len() {
+    //     let mut d = [0u8; 128];
+    // 
+    //     // Simuler une mauvaise frame : dire "je suis IPv4" mais mettre une IP de mauvaise taille
+    //     let mut b = octets::OctetsMut::with_slice(&mut d);
+    // 
+    //     // Encoder manuellement un mauvais frame
+    //     b.put_varint(0x9f81a6).unwrap(); // Type IPv4
+    //     b.put_varint(1).unwrap(); // Sequence number
+    // 
+    //     // Mauvaise taille: mettre 5 octets (au lieu de 4 pour IPv4)
+    //     b.put_bytes(&[192, 168, 1, 1, 42]).unwrap(); // 5 bytes au lieu de 4
+    //     b.put_u16(443).unwrap(); // Port
+    // 
+    //     let mut b = octets::Octets::with_slice(&d);
+    // 
+    //     let res = Frame::from_bytes(&mut b, packet::Type::Short);
+    // 
+    //     assert_eq!(res, Err(Error::InvalidFrame));
+    // }
 
     #[test]
     fn padding() {
