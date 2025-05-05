@@ -25,6 +25,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryInto;
+use std::net::IpAddr;
 use octets::varint_len;
 use crate::Error;
 use crate::Result;
@@ -186,9 +187,8 @@ pub enum Frame {
     },
 
     ObservedAddress {
-        ip_type: u64,
         sequence_number: u64,
-        ip: Vec<u8>,
+        ip: IpAddr,
         port: u16,
     },
 }
@@ -339,8 +339,6 @@ impl Frame {
             0x30 | 0x31 => parse_datagram_frame(frame_type, b)?,
 
             0x9f81a6 | 0x9f81a7 => {
-                let ip_type = frame_type;
-
                 let sequence_number = b.get_varint()?;
 
                 let ip_len = if frame_type == 0x9f81a6 { 4 } else { 16 };
@@ -350,7 +348,6 @@ impl Frame {
                 let port = b.get_u16()?;
 
                 Frame::ObservedAddress {
-                    ip_type,
                     sequence_number,
                     ip,
                     port,
@@ -620,10 +617,11 @@ impl Frame {
 
             Frame::DatagramHeader { .. } => (),
 
-            Frame::ObservedAddress { ip_type, sequence_number, ip, port } => {
-                b.put_varint(*ip_type)?;
+            Frame::ObservedAddress {sequence_number, ip, port } => {
+                // TODO modifier
+                
                 b.put_varint(*sequence_number)?;
-                b.put_bytes(ip)?;
+                b.put_(*ip)?;
                 b.put_u16(*port)?;
             },
         }

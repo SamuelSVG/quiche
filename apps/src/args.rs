@@ -192,6 +192,7 @@ impl Args for CommonArgs {
             .parse::<u64>()
             .unwrap();
         
+        // TODO marche pas
         let address_discovery = args.get_str("--address-discovery");
         let address_discovery = if !address_discovery.is_empty() {
             address_discovery.parse::<u8>().unwrap()
