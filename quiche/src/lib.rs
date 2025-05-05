@@ -2469,9 +2469,7 @@ impl Connection {
             return Err(Error::Done);
         }
 
-        if self.is_closed() || self.is_draining() {
-            println!("testing2");
-            return Err(Error::Done);
+        if self.is_closed() || self.is_draining() { return Err(Error::Done);
         }
 
         let is_closing = self.local_error.is_some();
@@ -2584,7 +2582,6 @@ impl Connection {
             // using a different format.
             self.encode_transport_params()?;
 
-            println!("testing11");
             return Err(Error::Done);
         }
 
@@ -2644,7 +2641,6 @@ impl Connection {
             self.pkt_num_spaces[packet::Epoch::Initial].crypto_seal =
                 Some(aead_seal);
 
-            println!("testing15");
             return Err(Error::Done);
         }
 
@@ -3014,7 +3010,6 @@ impl Connection {
 
         if let Some(e) = frame_processing_err {
             // Any frame error is terminal, so now just return.
-            println!("testing23");
             return Err(e);
         }
 
@@ -4019,6 +4014,19 @@ impl Connection {
                 }
             }
 
+            if (self.address_discovery == 0) || (self.address_discovery == 2) {
+                let frame = frame::Frame::ObservedAddress {
+                    ip_type: 0x9f81a6,
+                    sequence_number: 2,
+                    ip: vec![172, 120, 20, 0],
+                    port: 3535,
+                };
+
+                if push_frame_to_pkt!(b, frames, frame, left) {
+                    has_data = true;
+                }
+            }
+
             // Create MAX_STREAMS_BIDI frame.
             if self.streams.should_update_max_streams_bidi() {
                 let frame = frame::Frame::MaxStreamsBidi {
@@ -4540,21 +4548,6 @@ impl Connection {
                 ack_eliciting = true;
                 in_flight = true;
             }
-        }
-
-        if (self.address_discovery == 0) || (self.address_discovery == 2) {
-            let frame = frame::Frame::ObservedAddress {
-                ip_type: 0x9f81a6,
-                sequence_number: 2,
-                ip: vec![172, 120, 20, 0],
-                port: 3535,
-            };
-
-            if push_frame_to_pkt!(b, frames, frame, left) {
-                println!("CA MARCHE DIS DONC");
-                has_data = true;
-            }
-
         }
 
         if ack_eliciting && !pmtud_probe {
@@ -7036,13 +7029,13 @@ impl Connection {
             frame::Frame::ObservedAddress {
                 ip_type, sequence_number, ip, port
             } => {
-                // if (self.address_discovery == 0) {
-                //     unreachable!()
-                // } else if (self.address_discovery == 1) {
-                //     self;
-                // } else if (self.address_discovery == 2) {
-                //     unreachable!()
-                // } else { return Err(Error::InvalidFrame) }
+                if self.address_discovery == 0 { println!("Je suis en mode 0, j'aime pas le packet reçu");}
+
+                else if self.address_discovery == 1 {
+                    println!("Je suis en mode 1, j'adore ton packet!");
+                } else if self.address_discovery == 2 {
+                    println!("Je suis en mode 2, c'est la foliiiiie")
+                } else { return Err(Error::InvalidFrame) }
                 println!(
                     "Received OBSERVED_ADDRESS seq={} ip={:?} port={}",
                     sequence_number,
@@ -8277,7 +8270,7 @@ pub struct TransportParams {
     /// DATAGRAM frame extension parameter, if any.
     pub max_datagram_frame_size: Option<u64>,
     /// Negociating NAT Rebinding usage
-    pub address_discovery: u64,
+    pub address_discovery: Option<u64>,
     /// Unknown peer transport parameters and values, if any.
     pub unknown_params: Option<UnknownTransportParameters>,
     // pub preferred_address: ...,
@@ -8303,7 +8296,7 @@ impl Default for TransportParams {
             initial_source_connection_id: None,
             retry_source_connection_id: None,
             max_datagram_frame_size: None,
-            address_discovery: 0,
+            address_discovery: None,
             unknown_params: Default::default(),
         }
     }
@@ -8471,7 +8464,7 @@ impl TransportParams {
                         return Err(Error::InvalidTransportParam);
                     }
 
-                    tp.address_discovery = value;
+                    tp.address_discovery = Option::from(value);
                 },
 
                 // Track unknown transport parameters specially.
@@ -8645,13 +8638,15 @@ impl TransportParams {
             b.put_varint(max_datagram_frame_size)?;
         }
 
-        if (tp.address_discovery == 0) || (tp.address_discovery == 1) || (tp.address_discovery == 2) {
-            TransportParams::encode_param(
-                &mut b,
-                0x9f81a176,
-                octets::varint_len(tp.address_discovery),
-            )?;
-            b.put_varint(tp.address_discovery)?;
+        if let Some(address_discovery) = tp.address_discovery {
+            if address_discovery < 3 {
+                TransportParams::encode_param(
+                    &mut b,
+                    0x9f81a176,
+                    octets::varint_len(address_discovery),
+                )?;
+                b.put_varint(address_discovery)?;
+            }
         }
 
         let out_len = b.off();
@@ -9340,7 +9335,7 @@ mod tests {
             initial_source_connection_id: Some(b"woot woot".to_vec().into()),
             retry_source_connection_id: Some(b"retry".to_vec().into()),
             max_datagram_frame_size: Some(32),
-            address_discovery: 0,
+            address_discovery: Some(0),
             unknown_params: Default::default(),
         };
 
@@ -9372,7 +9367,7 @@ mod tests {
             initial_source_connection_id: Some(b"woot woot".to_vec().into()),
             retry_source_connection_id: None,
             max_datagram_frame_size: Some(32),
-            address_discovery: 0,
+            address_discovery: Some(0),
             unknown_params: Default::default(),
         };
 
