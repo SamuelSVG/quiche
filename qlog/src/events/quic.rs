@@ -24,6 +24,7 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::net::IpAddr;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -509,9 +510,8 @@ pub enum QuicFrame {
     },
     
     ObservedAddress {
-        ip_type: u64,
         sequence_number: u64,
-        ip: Vec<u8>,
+        ip: IpAddr,
         port: u16,
     },
 

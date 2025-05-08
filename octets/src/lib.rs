@@ -168,6 +168,8 @@ impl<'a> Octets<'a> {
     pub fn get_u64(&mut self) -> Result<u64> {
         get_u!(self, u64, 8)
     }
+    
+    pub fn get_u128(&mut self) -> Result<u128> { get_u!(self, u128, 16)}
 
     /// Reads an unsigned variable-length integer in network byte-order from
     /// the current offset and advances the buffer.

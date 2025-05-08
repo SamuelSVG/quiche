@@ -411,7 +411,7 @@ use std::time;
 
 use std::sync::Arc;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use std::str::FromStr;
 
@@ -4016,9 +4016,8 @@ impl Connection {
 
             if (self.address_discovery == 0) || (self.address_discovery == 2) {
                 let frame = frame::Frame::ObservedAddress {
-                    ip_type: 0x9f81a6,
                     sequence_number: 2,
-                    ip: vec![172, 120, 20, 0],
+                    ip: IpAddr::V4(Ipv4Addr::new(172, 120, 20, 0)),
                     port: 3535,
                 };
 
@@ -7026,16 +7025,17 @@ impl Connection {
         trace!("{} rx frm {:?}", self.trace_id, frame);
 
         match frame {
-            frame::Frame::ObservedAddress {
-                ip_type, sequence_number, ip, port
+            frame::Frame::ObservedAddress {sequence_number, ip, port
             } => {
+                println!("NOOOOOON");
                 if self.address_discovery == 0 { println!("Je suis en mode 0, j'aime pas le packet reçu");}
 
                 else if self.address_discovery == 1 {
                     println!("Je suis en mode 1, j'adore ton packet!");
                 } else if self.address_discovery == 2 {
                     println!("Je suis en mode 2, c'est la foliiiiie")
-                } else { return Err(Error::InvalidFrame) }
+                } else { println!("OUIIIIIII");
+                    return Err(Error::InvalidFrame) }
                 println!(
                     "Received OBSERVED_ADDRESS seq={} ip={:?} port={}",
                     sequence_number,

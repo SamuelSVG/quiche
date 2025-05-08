@@ -24,8 +24,9 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::any::TypeId;
 use std::convert::TryInto;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use octets::varint_len;
 use crate::Error;
 use crate::Result;
@@ -341,9 +342,9 @@ impl Frame {
             0x9f81a6 | 0x9f81a7 => {
                 let sequence_number = b.get_varint()?;
 
-                let ip_len = if frame_type == 0x9f81a6 { 4 } else { 16 };
-
-                let ip = b.get_bytes(ip_len)?.to_vec();
+                let ip = if frame_type == 0x9f81a6 { IpAddr::V4(Ipv4Addr::from(b.get_u32()?)) }
+                else if frame_type == 0x9f81a7 { IpAddr::V6(Ipv6Addr::from(b.get_u128()?)) }
+                    else { panic!() };
 
                 let port = b.get_u16()?;
 
@@ -618,10 +619,11 @@ impl Frame {
             Frame::DatagramHeader { .. } => (),
 
             Frame::ObservedAddress {sequence_number, ip, port } => {
-                // TODO modifier
-                
                 b.put_varint(*sequence_number)?;
-                b.put_(*ip)?;
+                match ip {
+                    IpAddr::V4(v4) => b.put_bytes(&v4.octets().to_vec())?,
+                    IpAddr::V6(v6) => b.put_bytes(&v6.octets().to_vec())?,
+                }
                 b.put_u16(*port)?;
             },
         }
@@ -841,21 +843,19 @@ impl Frame {
             },
 
             Frame::ObservedAddress {
-                ip_type,
                 sequence_number,
                 ip,
                 port,
             } => {
-                let ip_len = match ip_type {
-                    0x9f81a6 => 4,
-                    0x9f81a7 => 16,
-                    _ => panic!("invalid ip_type"), // ou panic!("invalid ip_type")
-                };
-
-                varint_len(*ip_type) +                 // frame type
+                if ip.is_ipv4() {
                     varint_len(*sequence_number) +         // sequence number
-                    ip_len +                               // IP address (4 or 16)
-                    2                                      // port
+                        4 +                               // IP address (4 or 16)
+                        2
+                } else if ip.is_ipv6() {
+                    varint_len(*sequence_number) +         // sequence number
+                        16 +                               // IP address (4 or 16)
+                        2
+                } else { panic!() }
             }
         }
     }
@@ -1083,10 +1083,9 @@ impl Frame {
                 raw: None,
             },
             
-            Frame::ObservedAddress { ip_type, sequence_number, ip, port } => QuicFrame::ObservedAddress {
-                ip_type: *ip_type,
+            Frame::ObservedAddress { sequence_number, ip, port } => QuicFrame::ObservedAddress {
                 sequence_number: *sequence_number,
-                ip: ip.clone(),
+                ip: *ip,
                 port: *port,
             },
         }
@@ -1257,7 +1256,7 @@ impl std::fmt::Debug for Frame {
                 write!(f, "DATAGRAM len={length}")?;
             },
 
-            Frame::ObservedAddress { ip_type, sequence_number,  ip, port } => {
+            Frame::ObservedAddress { sequence_number,  ip, port } => {
                 write!(f, "OBSERVED ADDRESS sequence_number={sequence_number} ip={ip:02x?} port={port}")?;
             },
         }
@@ -1460,9 +1459,8 @@ mod tests {
         let mut d = [0u8; 128];
 
         let frame = Frame::ObservedAddress {
-            ip_type: 0x9f81a6, // IPv4
             sequence_number: 42,
-            ip: vec![192, 168, 1, 1], // 4 octets -> IPv4
+            ip: IpAddr::from(vec![192, 168, 1, 1]), // 4 octets -> IPv4
             port: 443,
         };
 
@@ -1484,14 +1482,13 @@ mod tests {
         let mut d = [0u8; 256];
 
         let frame = Frame::ObservedAddress {
-            ip_type: 0x9f81a7, // IPv6
             sequence_number: 1337,
-            ip: vec![
+            ip: IpAddr::from(vec![
                 0x20, 0x01, 0x0d, 0xb8,
                 0x85, 0xa3, 0x00, 0x00,
                 0x00, 0x00, 0x8a, 0x2e,
                 0x03, 0x70, 0x73, 0x34,
-            ], // 16 octets -> IPv6
+            ]), // 16 octets -> IPv6
             port: 8443,
         };
 
