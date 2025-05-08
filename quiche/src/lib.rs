@@ -4016,7 +4016,6 @@ impl Connection {
 
             if (self.address_discovery == 0) || (self.address_discovery == 2) {
                 let frame = frame::Frame::ObservedAddress {
-                    ip_type: 0x9f81a6,
                     sequence_number: 2,
                     ip: vec![172, 120, 20, 0],
                     port: 3535,
@@ -7027,7 +7026,7 @@ impl Connection {
 
         match frame {
             frame::Frame::ObservedAddress {
-                ip_type, sequence_number, ip, port
+                sequence_number, ip, port
             } => {
                 if self.address_discovery == 0 { println!("Je suis en mode 0, j'aime pas le packet reçu");}
 

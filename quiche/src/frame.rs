@@ -188,7 +188,7 @@ pub enum Frame {
 
     ObservedAddress {
         sequence_number: u64,
-        ip: IpAddr,
+        ip: Vec<u8>,
         port: u16,
     },
 }
@@ -621,7 +621,7 @@ impl Frame {
                 // TODO modifier
                 
                 b.put_varint(*sequence_number)?;
-                b.put_(*ip)?;
+                b.put_bytes(ip)?;
                 b.put_u16(*port)?;
             },
         }
@@ -841,20 +841,18 @@ impl Frame {
             },
 
             Frame::ObservedAddress {
-                ip_type,
                 sequence_number,
                 ip,
                 port,
             } => {
-                let ip_len = match ip_type {
-                    0x9f81a6 => 4,
-                    0x9f81a7 => 16,
-                    _ => panic!("invalid ip_type"), // ou panic!("invalid ip_type")
-                };
+                // let ip_len = match ip_type {
+                //     0x9f81a6 => 4,
+                //     0x9f81a7 => 16,
+                //     _ => panic!("invalid ip_type"), // ou panic!("invalid ip_type")
+                // };
 
-                varint_len(*ip_type) +                 // frame type
                     varint_len(*sequence_number) +         // sequence number
-                    ip_len +                               // IP address (4 or 16)
+                    ip.len() +                               // IP address (4 or 16)
                     2                                      // port
             }
         }
@@ -1083,8 +1081,7 @@ impl Frame {
                 raw: None,
             },
             
-            Frame::ObservedAddress { ip_type, sequence_number, ip, port } => QuicFrame::ObservedAddress {
-                ip_type: *ip_type,
+            Frame::ObservedAddress {sequence_number, ip, port } => QuicFrame::ObservedAddress {
                 sequence_number: *sequence_number,
                 ip: ip.clone(),
                 port: *port,
@@ -1257,7 +1254,7 @@ impl std::fmt::Debug for Frame {
                 write!(f, "DATAGRAM len={length}")?;
             },
 
-            Frame::ObservedAddress { ip_type, sequence_number,  ip, port } => {
+            Frame::ObservedAddress { sequence_number,  ip, port } => {
                 write!(f, "OBSERVED ADDRESS sequence_number={sequence_number} ip={ip:02x?} port={port}")?;
             },
         }
@@ -1460,7 +1457,6 @@ mod tests {
         let mut d = [0u8; 128];
 
         let frame = Frame::ObservedAddress {
-            ip_type: 0x9f81a6, // IPv4
             sequence_number: 42,
             ip: vec![192, 168, 1, 1], // 4 octets -> IPv4
             port: 443,
@@ -1484,7 +1480,6 @@ mod tests {
         let mut d = [0u8; 256];
 
         let frame = Frame::ObservedAddress {
-            ip_type: 0x9f81a7, // IPv6
             sequence_number: 1337,
             ip: vec![
                 0x20, 0x01, 0x0d, 0xb8,

@@ -509,7 +509,6 @@ pub enum QuicFrame {
     },
     
     ObservedAddress {
-        ip_type: u64,
         sequence_number: u64,
         ip: Vec<u8>,
         port: u16,
