@@ -419,6 +419,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use smallvec::SmallVec;
+use qlog::events::quic::ErrorSpace::TransportError;
 
 /// The current QUIC wire version.
 pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_V1;
@@ -494,6 +495,9 @@ const DEFAULT_INITIAL_CONGESTION_WINDOW_PACKETS: usize = 10;
 
 // The maximum data offset that can be stored in a crypto stream.
 const MAX_CRYPTO_STREAM_OFFSET: u64 = 1 << 16;
+
+// The maximum number of times the peer can change its address in one minute.
+const MAX_ADDRESS_CHANGES: u8 = 4;
 
 /// A specialized [`Result`] type for quiche operations.
 ///
@@ -576,6 +580,9 @@ pub enum Error {
 
     /// The peer sent more data in CRYPTO frames than we can buffer.
     CryptoBufferExceeded,
+    
+    /// The peer sent an OBSERVED_ADDRESS frame but our mode was 0
+    UnexpectedOAFrame
 }
 
 /// QUIC error codes sent on the wire.
@@ -2354,23 +2361,7 @@ impl Connection {
                 &info,
                 recv_pid,
             ) {
-                // TODO possible que ce soit ici qu'il faille implémenter le comportement du observed address
                 Ok(v) => {
-                    // match self.address_discovery {
-                    //     1 => {
-                    //         // If the connection is in address discovery mode,
-                    //         // we need to check if the packet is a response to
-                    //         // our path challenge.
-                    //         if self.is_server && recv_pid.is_some() {
-                    //             let recv_path = self.paths.get_mut(recv_pid.unwrap())?;
-                    //             recv_path.add_challenge_sent(
-                    //                 &buf[len - left..len],
-                    //             );
-                    //         }
-                    //     },
-                    //
-                    //     _ => (),
-                    // }
                     v
                 },
 
@@ -4018,7 +4009,9 @@ impl Connection {
                 }
             }
 
-            if (self.address_discovery == 0) || (self.address_discovery == 2) {
+            // Create OBSERVED_ADDRESS frame.
+            if ((self.address_discovery == 0) || (self.address_discovery == 2))
+                && ((self.peer_transport_params.address_discovery == Some(1)) || (self.peer_transport_params.address_discovery == Some(2))) {
                 let ip = path.peer_addr().ip();
                 let ip_vec = match ip {
                     IpAddr::V4(v4) => v4.octets().to_vec(),
@@ -4039,23 +4032,6 @@ impl Connection {
                     in_flight = true;
                 }
             }
-
-            // let frame = frame::Frame::ObservedAddress {
-            //     ip_type: 0x9f81a6,
-            //     sequence_number: self.quad_sequence_number,
-            //     ip: path.peer_addr().ip(),
-            //     port: path.peer_addr().port(),
-            // };
-            //
-            // if push_frame_to_pkt!(b, frames, frame, left) {
-            //     self.quad_sequence_number += 1;
-            //     self.observed_address_sent_paths.push(send_pid);
-            //
-            //     self.last_sent_observed_address_frame_timestamp = Some(Instant::now());
-            //
-            //     ack_eliciting = true;
-            //     in_flight = true;
-            // }
 
             // Create MAX_STREAMS_BIDI frame.
             if self.streams.should_update_max_streams_bidi() {
@@ -7059,13 +7035,12 @@ impl Connection {
             frame::Frame::ObservedAddress {
                 sequence_number, ip, port
             } => {
-                if self.address_discovery == 0 { println!("Je suis en mode 0, j'aime pas le packet reçu");}
+                if self.address_discovery == 0 { return Err(Error::UnexpectedOAFrame); } 
 
-                else if self.address_discovery == 1 {
-                    println!("Je suis en mode 1, j'adore ton packet!");
-                } else if self.address_discovery == 2 {
-                    println!("Je suis en mode 2, c'est la foliiiiie")
-                } else { return Err(Error::InvalidFrame) }
+                else if self.address_discovery == 1 || self.address_discovery == 2 {
+                    // TODO défense
+                    println!("J'adore ton packet!");
+                } else { return Err(Error::InvalidTransportParam) } // any other value than these are treated as a connection error of type TRANSPORT_PARAMETER_ERROR
                 println!(
                     "Received OBSERVED_ADDRESS seq={} ip={:?} port={}",
                     sequence_number,
