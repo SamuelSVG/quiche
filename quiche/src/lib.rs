@@ -580,7 +580,7 @@ pub enum Error {
 
     /// The peer sent more data in CRYPTO frames than we can buffer.
     CryptoBufferExceeded,
-    
+
     /// The peer sent an OBSERVED_ADDRESS frame but our mode was 0
     UnexpectedOAFrame
 }
@@ -823,8 +823,6 @@ pub struct Config {
     disable_dcid_reuse: bool,
 
     track_unknown_transport_params: Option<usize>,
-
-    address_discovery: u8,
 }
 
 // See https://quicwg.org/base-drafts/rfc9000.html#section-15
@@ -895,8 +893,6 @@ impl Config {
             disable_dcid_reuse: false,
 
             track_unknown_transport_params: None,
-
-            address_discovery: 0,
         })
     }
 
@@ -1379,9 +1375,6 @@ impl Config {
         self.track_unknown_transport_params = Some(size);
     }
 
-    pub fn set_address_discovery(&mut self, v: u8) {
-        self.address_discovery = v;
-    }
 }
 
 /// A QUIC connection.
@@ -1615,7 +1608,7 @@ pub struct Connection {
     max_amplification_factor: usize,
 
     /// Address discovery mode
-    address_discovery: u8,
+    address_discovery: Option<u64>,
 }
 
 /// Creates a new server-side connection.
@@ -2067,7 +2060,7 @@ impl Connection {
 
             max_amplification_factor: config.max_amplification_factor,
 
-            address_discovery: config.address_discovery,
+            address_discovery: config.local_transport_params.address_discovery,
         };
 
         if let Some(odcid) = odcid {
@@ -4010,7 +4003,7 @@ impl Connection {
             }
 
             // Create OBSERVED_ADDRESS frame.
-            if ((self.address_discovery == 0) || (self.address_discovery == 2))
+            if ((self.address_discovery == Some(0)) || (self.address_discovery == Some(2)))
                 && ((self.peer_transport_params.address_discovery == Some(1)) || (self.peer_transport_params.address_discovery == Some(2))) {
                 let ip = path.peer_addr().ip();
                 let ip_vec = match ip {
@@ -7035,9 +7028,9 @@ impl Connection {
             frame::Frame::ObservedAddress {
                 sequence_number, ip, port
             } => {
-                if self.address_discovery == 0 { return Err(Error::UnexpectedOAFrame); } 
+                if self.address_discovery == Some(0) { return Err(Error::UnexpectedOAFrame); }
 
-                else if self.address_discovery == 1 || self.address_discovery == 2 {
+                else if self.address_discovery == Some(1) || self.address_discovery == Some(2) {
                     // TODO défense
                     println!("J'adore ton packet!");
                 } else { return Err(Error::InvalidTransportParam) } // any other value than these are treated as a connection error of type TRANSPORT_PARAMETER_ERROR
@@ -8748,7 +8741,6 @@ pub mod testing {
             config.set_max_idle_timeout(180_000);
             config.verify_peer(false);
             config.set_ack_delay_exponent(8);
-            config.set_address_discovery(0);
 
             Pipe::with_config(&mut config)
         }
