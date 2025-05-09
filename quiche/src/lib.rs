@@ -1913,7 +1913,7 @@ impl Connection {
         );
 
         let mut conn = Connection {
-            sequence_number: rand_u64(),
+            sequence_number: rand_u64_uniform(20000),
 
             version: config.version,
 
@@ -17997,7 +17997,7 @@ pub use crate::packet::Type;
 pub use crate::path::PathEvent;
 pub use crate::path::PathStats;
 pub use crate::path::SocketAddrIter;
-use crate::rand::rand_u64;
+use crate::rand::{rand_u64, rand_u64_uniform};
 pub use crate::recovery::congestion::CongestionControlAlgorithm;
 
 pub use crate::stream::StreamIter;
