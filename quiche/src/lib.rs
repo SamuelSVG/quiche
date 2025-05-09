@@ -411,7 +411,7 @@ use std::time;
 
 use std::sync::Arc;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use std::str::FromStr;
 
@@ -1379,6 +1379,8 @@ impl Config {
 
 /// A QUIC connection.
 pub struct Connection {
+    sequence_number: u64,
+
     /// QUIC wire version used for the connection.
     version: u32,
 
@@ -1911,6 +1913,8 @@ impl Connection {
         );
 
         let mut conn = Connection {
+            sequence_number: rand_u64(),
+
             version: config.version,
 
             ids,
@@ -4015,18 +4019,43 @@ impl Connection {
             }
 
             if (self.address_discovery == 0) || (self.address_discovery == 2) {
+                let ip = path.peer_addr().ip();
+                let ip_vec = match ip {
+                    IpAddr::V4(v4) => v4.octets().to_vec(),
+                    IpAddr::V6(v6) => v6.octets().to_vec(),
+                };
+
                 let frame = frame::Frame::ObservedAddress {
-                    sequence_number: 2,
-                    ip: vec![172, 120, 20, 0],
-                    port: 3535,
+                    sequence_number: self.sequence_number,
+                    ip: ip_vec,
+                    port: path.peer_addr().port(),
                 };
 
                 if push_frame_to_pkt!(b, frames, frame, left) {
+                    self.sequence_number = self.sequence_number + 1;
+
                     has_data = true;
                     ack_eliciting = true;
                     in_flight = true;
                 }
             }
+
+            // let frame = frame::Frame::ObservedAddress {
+            //     ip_type: 0x9f81a6,
+            //     sequence_number: self.quad_sequence_number,
+            //     ip: path.peer_addr().ip(),
+            //     port: path.peer_addr().port(),
+            // };
+            //
+            // if push_frame_to_pkt!(b, frames, frame, left) {
+            //     self.quad_sequence_number += 1;
+            //     self.observed_address_sent_paths.push(send_pid);
+            //
+            //     self.last_sent_observed_address_frame_timestamp = Some(Instant::now());
+            //
+            //     ack_eliciting = true;
+            //     in_flight = true;
+            // }
 
             // Create MAX_STREAMS_BIDI frame.
             if self.streams.should_update_max_streams_bidi() {
@@ -17968,7 +17997,7 @@ pub use crate::packet::Type;
 pub use crate::path::PathEvent;
 pub use crate::path::PathStats;
 pub use crate::path::SocketAddrIter;
-
+use crate::rand::rand_u64;
 pub use crate::recovery::congestion::CongestionControlAlgorithm;
 
 pub use crate::stream::StreamIter;
