@@ -8294,7 +8294,7 @@ impl Default for TransportParams {
             initial_source_connection_id: None,
             retry_source_connection_id: None,
             max_datagram_frame_size: None,
-            address_discovery: None,
+            address_discovery: Some(2),
             unknown_params: Default::default(),
         }
     }
