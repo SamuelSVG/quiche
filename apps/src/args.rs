@@ -190,7 +190,7 @@ impl Args for CommonArgs {
             .get_str("--initial-cwnd-packets")
             .parse::<u64>()
             .unwrap();
-        
+
 
         CommonArgs {
             alpns,
@@ -390,7 +390,7 @@ impl Args for ClientArgs {
         let send_priority_update = args.get_bool("--send-priority-update");
 
         let address_discovery =
-            if !args.get_str("--address-discovery").is_empty() {
+            if args.get_bool("--address-discovery") {
                 Some(args.get_str("--address-discovery").parse::<u64>().unwrap())
             } else {
                 None
@@ -508,8 +508,9 @@ impl Args for ServerArgs {
         let disable_pacing = args.get_bool("--disable-pacing");
         let enable_pmtud = args.get_bool("--enable-pmtud");
 
-        let address_discovery =
-            if !args.get_str("--address-discovery").is_empty() {
+        // TODO erreur avec unwrap quand on ne met pas --address-discovery dans la commande
+        let address_discovery = 
+            if args.get_bool("--address-discovery") {
                 Some(args.get_str("--address-discovery").parse::<u64>().unwrap())
             } else {
                 None
