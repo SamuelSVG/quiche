@@ -618,8 +618,13 @@ impl Frame {
             Frame::DatagramHeader { .. } => (),
 
             Frame::ObservedAddress {sequence_number, ip, port } => {
-                // TODO modifier
-                
+                let frame_type = match ip.len() {
+                    4 => 0x9f81a6,
+                    16 => 0x9f81a7,
+                    _ => return Err(Error::InvalidFrame),
+                };
+
+                b.put_varint(frame_type)?;
                 b.put_varint(*sequence_number)?;
                 b.put_bytes(ip)?;
                 b.put_u16(*port)?;
@@ -843,17 +848,18 @@ impl Frame {
             Frame::ObservedAddress {
                 sequence_number,
                 ip,
-                port,
+                port: _,
             } => {
-                // let ip_len = match ip_type {
-                //     0x9f81a6 => 4,
-                //     0x9f81a7 => 16,
-                //     _ => panic!("invalid ip_type"), // ou panic!("invalid ip_type")
-                // };
+                let frame_type = match ip.len() {
+                    4 => 0x9f81a6,
+                    16 => 0x9f81a7,
+                    _ => panic!("invalid IP length: {}", ip.len()),
+                };
 
-                    varint_len(*sequence_number) +         // sequence number
-                    ip.len() +                               // IP address (4 or 16)
-                    2                                      // port
+                varint_len(frame_type) +
+                varint_len(*sequence_number) +         // sequence number
+                ip.len() +                               // IP address (4 or 16)
+                2                                      // port
             }
         }
     }

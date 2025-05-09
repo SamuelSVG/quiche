@@ -4023,6 +4023,8 @@ impl Connection {
 
                 if push_frame_to_pkt!(b, frames, frame, left) {
                     has_data = true;
+                    ack_eliciting = true;
+                    in_flight = true;
                 }
             }
 
