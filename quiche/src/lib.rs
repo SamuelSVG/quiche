@@ -895,6 +895,10 @@ impl Config {
             track_unknown_transport_params: None,
         })
     }
+    
+    pub fn set_address_discovery(&mut self, mode: Option<u64>) {
+        self.local_transport_params.address_discovery = mode;
+    }
 
     /// Configures the given certificate chain.
     ///
@@ -8294,7 +8298,7 @@ impl Default for TransportParams {
             initial_source_connection_id: None,
             retry_source_connection_id: None,
             max_datagram_frame_size: None,
-            address_discovery: Some(2),
+            address_discovery: None,
             unknown_params: Default::default(),
         }
     }

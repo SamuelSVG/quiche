@@ -54,7 +54,7 @@ pub struct CommonArgs {
     pub qpack_max_table_capacity: Option<u64>,
     pub qpack_blocked_streams: Option<u64>,
     pub initial_cwnd_packets: u64,
-    pub address_discovery: u8,
+    pub address_discovery: Option<u64>,
 }
 
 /// Creates a new `CommonArgs` structure using the provided [`Docopt`].
@@ -81,6 +81,7 @@ pub struct CommonArgs {
 /// --qpack-max-table-capacity BYTES  Max capacity of dynamic QPACK decoding.
 /// --qpack-blocked-streams STREAMS  Limit of blocked streams while decoding.
 /// --initial-cwnd-packets      Size of initial congestion window, in packets.
+/// --address-discovery MODE    Address discovery mode
 ///
 /// [`Docopt`]: https://docs.rs/docopt/1.1.0/docopt/
 impl Args for CommonArgs {
@@ -192,13 +193,12 @@ impl Args for CommonArgs {
             .parse::<u64>()
             .unwrap();
         
-        // TODO marche pas
-        let address_discovery = args.get_str("--address-discovery");
-        let address_discovery = if !address_discovery.is_empty() {
-            address_discovery.parse::<u8>().unwrap()
-        } else {
-            0
-        };
+        let address_discovery = 
+            if !args.get_str("--address-discovery").is_empty() {
+                Some(args.get_str("--address-discovery").parse::<u64>().unwrap())
+            } else {
+                None
+            };
 
         CommonArgs {
             alpns,
@@ -253,7 +253,7 @@ impl Default for CommonArgs {
             qpack_max_table_capacity: None,
             qpack_blocked_streams: None,
             initial_cwnd_packets: 10,
-            address_discovery: 0,
+            address_discovery: None,
         }
     }
 }
@@ -300,7 +300,6 @@ Options:
   --session-file PATH      File used to cache a TLS session for resumption.
   --source-port PORT       Source port to use when connecting to the server [default: 0].
   --initial-cwnd-packets PACKETS   The initial congestion window size in terms of packet count [default: 10].
-  --address-discovery MODE  Address discovery mode [default: 0].
   -h --help                Show this screen.
 ";
 
