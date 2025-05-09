@@ -54,7 +54,6 @@ pub struct CommonArgs {
     pub qpack_max_table_capacity: Option<u64>,
     pub qpack_blocked_streams: Option<u64>,
     pub initial_cwnd_packets: u64,
-    pub address_discovery: Option<u64>,
 }
 
 /// Creates a new `CommonArgs` structure using the provided [`Docopt`].
@@ -81,7 +80,6 @@ pub struct CommonArgs {
 /// --qpack-max-table-capacity BYTES  Max capacity of dynamic QPACK decoding.
 /// --qpack-blocked-streams STREAMS  Limit of blocked streams while decoding.
 /// --initial-cwnd-packets      Size of initial congestion window, in packets.
-/// --address-discovery MODE    Address discovery mode
 ///
 /// [`Docopt`]: https://docs.rs/docopt/1.1.0/docopt/
 impl Args for CommonArgs {
@@ -193,12 +191,6 @@ impl Args for CommonArgs {
             .parse::<u64>()
             .unwrap();
         
-        let address_discovery = 
-            if !args.get_str("--address-discovery").is_empty() {
-                Some(args.get_str("--address-discovery").parse::<u64>().unwrap())
-            } else {
-                None
-            };
 
         CommonArgs {
             alpns,
@@ -223,7 +215,6 @@ impl Args for CommonArgs {
             qpack_max_table_capacity,
             qpack_blocked_streams,
             initial_cwnd_packets,
-            address_discovery,
         }
     }
 }
@@ -253,7 +244,6 @@ impl Default for CommonArgs {
             qpack_max_table_capacity: None,
             qpack_blocked_streams: None,
             initial_cwnd_packets: 10,
-            address_discovery: None,
         }
     }
 }
@@ -300,6 +290,7 @@ Options:
   --session-file PATH      File used to cache a TLS session for resumption.
   --source-port PORT       Source port to use when connecting to the server [default: 0].
   --initial-cwnd-packets PACKETS   The initial congestion window size in terms of packet count [default: 10].
+  --address-discovery MODE    Address discovery mode [default: <None>].
   -h --help                Show this screen.
 ";
 
@@ -320,6 +311,7 @@ pub struct ClientArgs {
     pub source_port: u16,
     pub perform_migration: bool,
     pub send_priority_update: bool,
+    pub address_discovery: Option<u64>,
 }
 
 impl Args for ClientArgs {
@@ -397,6 +389,13 @@ impl Args for ClientArgs {
 
         let send_priority_update = args.get_bool("--send-priority-update");
 
+        let address_discovery =
+            if !args.get_str("--address-discovery").is_empty() {
+                Some(args.get_str("--address-discovery").parse::<u64>().unwrap())
+            } else {
+                None
+            };
+
         ClientArgs {
             version,
             dump_response_path,
@@ -413,6 +412,7 @@ impl Args for ClientArgs {
             source_port,
             perform_migration,
             send_priority_update,
+            address_discovery
         }
     }
 }
@@ -435,6 +435,7 @@ impl Default for ClientArgs {
             source_port: 0,
             perform_migration: false,
             send_priority_update: false,
+            address_discovery: None,
         }
     }
 }
@@ -475,6 +476,7 @@ Options:
   --disable-gso               Disable GSO (linux only).
   --disable-pacing            Disable pacing (linux only).
   --initial-cwnd-packets PACKETS      The initial congestion window size in terms of packet count [default: 10].
+  --address-discovery MODE    Address discovery mode [default: <None>].
   -h --help                   Show this screen.
 ";
 
@@ -489,6 +491,7 @@ pub struct ServerArgs {
     pub disable_gso: bool,
     pub disable_pacing: bool,
     pub enable_pmtud: bool,
+    pub address_discovery: Option<u64>,
 }
 
 impl Args for ServerArgs {
@@ -505,6 +508,13 @@ impl Args for ServerArgs {
         let disable_pacing = args.get_bool("--disable-pacing");
         let enable_pmtud = args.get_bool("--enable-pmtud");
 
+        let address_discovery =
+            if !args.get_str("--address-discovery").is_empty() {
+                Some(args.get_str("--address-discovery").parse::<u64>().unwrap())
+            } else {
+                None
+            };
+
         ServerArgs {
             listen,
             no_retry,
@@ -515,6 +525,7 @@ impl Args for ServerArgs {
             disable_gso,
             disable_pacing,
             enable_pmtud,
+            address_discovery
         }
     }
 }

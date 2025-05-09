@@ -420,6 +420,7 @@ use std::collections::VecDeque;
 
 use smallvec::SmallVec;
 use qlog::events::quic::ErrorSpace::TransportError;
+use crate::frame::Frame;
 
 /// The current QUIC wire version.
 pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_V1;
@@ -895,7 +896,7 @@ impl Config {
             track_unknown_transport_params: None,
         })
     }
-    
+
     pub fn set_address_discovery(&mut self, mode: Option<u64>) {
         self.local_transport_params.address_discovery = mode;
     }
@@ -7037,6 +7038,9 @@ impl Connection {
                 else if self.address_discovery == Some(1) || self.address_discovery == Some(2) {
                     // TODO défense
                     println!("J'adore ton packet!");
+                    // if self.sequence_number >  {
+                    //     self.
+                    // }
                 } else { return Err(Error::InvalidTransportParam) } // any other value than these are treated as a connection error of type TRANSPORT_PARAMETER_ERROR
                 println!(
                     "Received OBSERVED_ADDRESS seq={} ip={:?} port={}",

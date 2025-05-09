@@ -126,6 +126,8 @@ fn main() {
 
     config.set_max_connection_window(conn_args.max_window);
     config.set_max_stream_window(conn_args.max_stream_window);
+    
+    config.set_address_discovery(args.address_discovery);
 
     config.enable_pacing(pacing);
 
