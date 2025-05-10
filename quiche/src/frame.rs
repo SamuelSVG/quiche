@@ -25,7 +25,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryInto;
-use std::net::IpAddr;
 use octets::varint_len;
 use crate::Error;
 use crate::Result;
@@ -1428,36 +1427,6 @@ fn parse_datagram_frame(ty: u64, b: &mut octets::Octets) -> Result<Frame> {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn observed_address() {
-    //     let mut d = [42; 128];
-    // 
-    //     let frame = Frame::ObservedAddress {
-    //         sequence_number: 0,
-    //         ip: vec![1, 2, 3, 4],
-    //         port: 1234,
-    //     };
-    // 
-    //     let wire_len = {
-    //         let mut b = octets::OctetsMut::with_slice(&mut d);
-    //         frame.to_bytes(&mut b).unwrap()
-    //     };
-    // 
-    //     assert_eq!(wire_len, 11);
-    // 
-    //     let mut b = octets::Octets::with_slice(&d);
-    //     assert_eq!(Frame::from_bytes(&mut b, packet::Type::Short), Ok(frame));
-    // 
-    //     let mut b = octets::Octets::with_slice(&d);
-    //     assert!(Frame::from_bytes(&mut b, packet::Type::Initial).is_err());
-    // 
-    //     let mut b = octets::Octets::with_slice(&d);
-    //     assert!(Frame::from_bytes(&mut b, packet::Type::ZeroRTT).is_ok());
-    // 
-    //     let mut b = octets::Octets::with_slice(&d);
-    //     assert!(Frame::from_bytes(&mut b, packet::Type::Handshake).is_err());
-    // }
-
     #[test]
     fn observed_address_ipv4() {
         let mut d = [0u8; 128];
@@ -1474,7 +1443,7 @@ mod tests {
         };
         assert_eq!(wire_len, 11);
 
-        // Maintenant on relit ce qu'on a encodé
+        // We try to see if we can read the frame we just encoded
         let mut b = octets::Octets::with_slice(&d);
         let decoded = Frame::from_bytes(&mut b, packet::Type::Short).unwrap();
 
@@ -1502,34 +1471,12 @@ mod tests {
         };
         assert_eq!(wire_len, 24);
 
-        // Maintenant on relit ce qu'on a encodé
+        // We try to see if we can read the frame we just encoded
         let mut b = octets::Octets::with_slice(&d);
         let decoded = Frame::from_bytes(&mut b, packet::Type::Short).unwrap();
 
         assert_eq!(decoded, frame);
     }
-
-    // #[test]
-    // fn observed_address_invalid_ip_len() {
-    //     let mut d = [0u8; 128];
-    // 
-    //     // Simuler une mauvaise frame : dire "je suis IPv4" mais mettre une IP de mauvaise taille
-    //     let mut b = octets::OctetsMut::with_slice(&mut d);
-    // 
-    //     // Encoder manuellement un mauvais frame
-    //     b.put_varint(0x9f81a6).unwrap(); // Type IPv4
-    //     b.put_varint(1).unwrap(); // Sequence number
-    // 
-    //     // Mauvaise taille: mettre 5 octets (au lieu de 4 pour IPv4)
-    //     b.put_bytes(&[192, 168, 1, 1, 42]).unwrap(); // 5 bytes au lieu de 4
-    //     b.put_u16(443).unwrap(); // Port
-    // 
-    //     let mut b = octets::Octets::with_slice(&d);
-    // 
-    //     let res = Frame::from_bytes(&mut b, packet::Type::Short);
-    // 
-    //     assert_eq!(res, Err(Error::InvalidFrame));
-    // }
 
     #[test]
     fn padding() {

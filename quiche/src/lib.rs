@@ -419,8 +419,6 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use smallvec::SmallVec;
-use qlog::events::quic::ErrorSpace::TransportError;
-use crate::frame::Frame;
 
 /// The current QUIC wire version.
 pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_V1;
@@ -695,6 +693,7 @@ impl Error {
             Error::OutOfIdentifiers => -18,
             Error::KeyUpdate => -19,
             Error::CryptoBufferExceeded => -20,
+            Error::UnexpectedOAFrame => -21,
         }
     }
 }
@@ -1614,6 +1613,9 @@ pub struct Connection {
 
     /// Address discovery mode
     address_discovery: Option<u64>,
+
+    /// Last observed address
+    last_observed_address: Option<(Vec<u8>, u16)>,
 }
 
 /// Creates a new server-side connection.
@@ -2066,6 +2068,8 @@ impl Connection {
             max_amplification_factor: config.max_amplification_factor,
 
             address_discovery: config.local_transport_params.address_discovery,
+
+            last_observed_address: None,
         };
 
         if let Some(odcid) = odcid {
@@ -7037,17 +7041,15 @@ impl Connection {
 
                 else if self.address_discovery == Some(1) || self.address_discovery == Some(2) {
                     // TODO défense
-                    println!("J'adore ton packet!");
-                    // if self.sequence_number >  {
-                    //     self.
-                    // }
+                    println!(
+                        "Received OBSERVED_ADDRESS seq={} ip={:?} port={}",
+                        sequence_number,
+                        ip,
+                        port
+                    );
+                    self.last_observed_address = Some((ip, port));
+
                 } else { return Err(Error::InvalidTransportParam) } // any other value than these are treated as a connection error of type TRANSPORT_PARAMETER_ERROR
-                println!(
-                    "Received OBSERVED_ADDRESS seq={} ip={:?} port={}",
-                    sequence_number,
-                    ip,
-                    port
-                );
             },
 
             frame::Frame::Padding { .. } => (),
@@ -9241,86 +9243,8 @@ pub mod testing {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn test_send_with_address_discovery_enabled() {
-    //     let scid = quiche::ConnectionId::from_ref(&[0xba; 16]);
-    //
-    //     // Initialisation de la config avec address_discovery activé
-    //     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
-    //     config.set_application_protos(b"\x05hq-29").unwrap();
-    //     config.set_max_idle_timeout(5000);
-    //     config.set_initial_max_data(1000000);
-    //     config.set_initial_max_stream_data_bidi_local(100000);
-    //     config.set_initial_max_streams_bidi(10);
-    //     config.set_disable_active_migration(true);
-    //
-    //     // Active le nouveau champ
-    //     config.address_discovery = true;
-    //
-    //     let mut conn = quiche::connect(Some("test"), &scid, std::net::SocketAddr::from(([127, 0, 0, 1], 4433)), std::net::SocketAddr::from(([127, 0, 0, 1], 1234)), &mut config).unwrap();
-    //
-    //     // Préparation d’un buffer de sortie pour envoyer un paquet
-    //     let mut out = [0; 1350];
-    //     let send_result = conn.send(&mut out);
-    //
-    //     // Vérifie qu'on peut envoyer un paquet sans erreur
-    //     assert!(send_result.is_ok());
-    // }
-
-    // #[test]
-    // /// Tests that the address_discovery configuration is correctly set and passed into the connection.
-    // fn config_address_discovery_enabled() {
-    //     let mut buf = [0; 68452];
-    //
-    //     let mut pipe = testing::Pipe::new().unwrap();
-    //     assert_eq!(pipe.handshake(), Ok(()));
-    //
-    //
-    //     // Client opens unidirectional stream.
-    //     assert_eq!(pipe.client.stream_send(2, b"hello", false), Ok(5));
-    //     assert_eq!(pipe.advance(), Ok(()));
-    //
-    //     // Client sends MAX_STREAM_DATA on local unidirectional stream.
-    //     let frames = [frame::Frame::ObservedAddress {
-    //         sequence_number: 32,
-    //         ip: vec![172, 32, 1, 0],
-    //         port: 12
-    //     }];
-    //
-    //     let pkt_type = packet::Type::Short;
-    //     assert_eq!(
-    //         pipe.send_pkt_to_server(pkt_type, &frames, &mut buf),
-    //         Err(Error::InvalidStreamState(2)),
-    //     );
-        // TODO verif avec assertequal que ip client est reconnue par serveur + après client change d'ip et verif que le serveur a bien maj
-
-        // let scid = ConnectionId::from_ref(&[0xba; 16]);
-        //
-        // let mut config = Config::new(PROTOCOL_VERSION).unwrap();
-        // config.set_application_protos(quiche::h3::APPLICATION_PROTOCOL).unwrap();
-        // config.set_initial_max_data(1000000);
-        // config.set_initial_max_stream_data_bidi_local(100000);
-        // config.set_initial_max_streams_bidi(10);
-        //
-        // // Activate address discovery
-        // config.address_discovery = 0;
-        //
-        // let conn = Connection::new_client(
-        //     Some("test"),
-        //     &scid,
-        //     SocketAddr::from(([127, 0, 0, 1], 12345)),
-        //     SocketAddr::from(([127, 0, 0, 1], 4433)),
-        //     &config,
-        // )
-        //     .unwrap();
-        //
-        // // Check that the connection has address_discovery enabled
-        // assert!(conn.address_discovery_enabled());
-    // }
-
-
     #[test]
-    fn transport_params() {
+    fn transport_params_encoding_decoding() {
         // Server encodes, client decodes.
         let tp = TransportParams {
             original_destination_connection_id: None,
@@ -9347,7 +9271,7 @@ mod tests {
         let mut raw_params = [42; 256];
         let raw_params =
             TransportParams::encode(&tp, true, &mut raw_params).unwrap();
-        assert_eq!(raw_params.len(), 97);
+        assert_eq!(raw_params.len(), 104);
 
         let new_tp = TransportParams::decode(raw_params, false, None).unwrap();
 
@@ -9379,11 +9303,127 @@ mod tests {
         let mut raw_params = [42; 256];
         let raw_params =
             TransportParams::encode(&tp, false, &mut raw_params).unwrap();
-        assert_eq!(raw_params.len(), 72);
+        assert_eq!(raw_params.len(), 79);
 
         let new_tp = TransportParams::decode(raw_params, true, None).unwrap();
 
         assert_eq!(new_tp, tp);
+    }
+
+    #[test]
+    fn observed_address_unexpected() {
+        // Configure server
+        let mut server_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        server_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        server_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        server_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        server_config.set_initial_max_data(30);
+        server_config.set_initial_max_stream_data_bidi_local(15);
+        server_config.set_initial_max_stream_data_bidi_remote(15);
+        server_config.set_initial_max_streams_bidi(3);
+
+        // Configure client
+        let mut client_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        client_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        client_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        client_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        client_config.set_initial_max_data(30);
+        client_config.set_initial_max_stream_data_bidi_local(15);
+        client_config.set_initial_max_stream_data_bidi_remote(15);
+        client_config.set_initial_max_streams_bidi(3);
+
+        // Configure client and server in mode 0 (can send an OBSERVED_ADDRESS but do not want to receive one).
+        server_config.set_address_discovery(Some(0));
+        client_config.set_address_discovery(Some(0));
+
+        // Perform initial handshake.
+        let mut pipe = testing::Pipe::with_client_and_server_config(&mut client_config, &mut server_config).unwrap();
+        assert_eq!(pipe.handshake(), Ok(()));
+
+        let mut buf = [0; 65535];
+        // Client sends OBSERVED_ADDRESS on local unidirectional stream.
+        let frames = [frame::Frame::ObservedAddress {
+            sequence_number : 1,
+            ip: [1, 2, 3, 4].to_vec(),
+            port : 1234,
+        }];
+
+        let pkt_type = packet::Type::Short;
+        assert_eq!(
+            pipe.send_pkt_to_server(pkt_type, &frames, &mut buf),
+            Err(Error::UnexpectedOAFrame),
+        );
+    }
+
+    #[test]
+    fn observed_address_expected(){
+        // Configure server
+        let mut server_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        server_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        server_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        server_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        server_config.set_initial_max_data(30);
+        server_config.set_initial_max_stream_data_bidi_local(15);
+        server_config.set_initial_max_stream_data_bidi_remote(15);
+        server_config.set_initial_max_streams_bidi(3);
+
+        // Configure client
+        let mut client_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        client_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        client_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        client_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        client_config.set_initial_max_data(30);
+        client_config.set_initial_max_stream_data_bidi_local(15);
+        client_config.set_initial_max_stream_data_bidi_remote(15);
+        client_config.set_initial_max_streams_bidi(3);
+
+        // Configure client and server in mode 0 (can send an OBSERVED_ADDRESS but do not want to receive one).
+        server_config.set_address_discovery(Some(2));
+        client_config.set_address_discovery(Some(1));
+
+        // Perform initial handshake.
+        let mut pipe = testing::Pipe::with_client_and_server_config(&mut client_config, &mut server_config).unwrap();
+        assert_eq!(pipe.handshake(), Ok(()));
+
+        let mut buf = [0; 65535];
+        // Client sends OBSERVED_ADDRESS on local unidirectional stream.
+        let frames = [frame::Frame::ObservedAddress {
+            sequence_number : 1,
+            ip: [1, 2, 3, 4].to_vec(),
+            port : 1234,
+        }];
+
+        let pkt_type = packet::Type::Short;
+        pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
+        let Some((server_ip, server_port)) = pipe.server.last_observed_address
+        else {panic!("Wrong setup")};
+
+        assert_eq!([1, 2, 3, 4].to_vec(), server_ip);
+        assert_eq!(1234, server_port);
     }
 
     #[test]
