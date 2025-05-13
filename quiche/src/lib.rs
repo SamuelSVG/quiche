@@ -1920,7 +1920,7 @@ impl Connection {
         );
 
         let mut conn = Connection {
-            sequence_number: rand_u64_uniform(20000),
+            sequence_number: 0,
 
             version: config.version,
 
@@ -4020,6 +4020,9 @@ impl Connection {
                     IpAddr::V6(v6) => v6.octets().to_vec(),
                 };
 
+                self.sequence_number = self.sequence_number + 1;
+
+
                 let frame = frame::Frame::ObservedAddress {
                     sequence_number: self.sequence_number,
                     ip: ip_vec,
@@ -4027,7 +4030,7 @@ impl Connection {
                 };
 
                 if push_frame_to_pkt!(b, frames, frame, left) {
-                    self.sequence_number = self.sequence_number + 1;
+                    // self.sequence_number = self.sequence_number + 1;
 
                     has_data = true;
                     ack_eliciting = true;
@@ -7047,7 +7050,11 @@ impl Connection {
                         ip,
                         port
                     );
-                    self.last_observed_address = Some((ip, port));
+                    println!("seq num conn {}", self.sequence_number);
+                    if (sequence_number > self.sequence_number){
+                        self.last_observed_address = Some((ip, port));
+                        self.sequence_number = self.sequence_number+1;
+                    }
 
                 } else { return Err(Error::InvalidTransportParam) } // any other value than these are treated as a connection error of type TRANSPORT_PARAMETER_ERROR
             },
