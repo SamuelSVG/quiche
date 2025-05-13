@@ -7050,10 +7050,12 @@ impl Connection {
                         ip,
                         port
                     );
-                    println!("seq num conn {}", self.sequence_number);
                     if (sequence_number > self.sequence_number){
                         self.last_observed_address = Some((ip, port));
                         self.sequence_number = self.sequence_number+1;
+                    }
+                    else { 
+                        println!("seq num conn {} is greater than seq num received", self.sequence_number);
                     }
 
                 } else { return Err(Error::InvalidTransportParam) } // any other value than these are treated as a connection error of type TRANSPORT_PARAMETER_ERROR
@@ -9419,18 +9421,83 @@ mod tests {
         let mut buf = [0; 65535];
         // Client sends OBSERVED_ADDRESS on local unidirectional stream.
         let frames = [frame::Frame::ObservedAddress {
-            sequence_number : 1,
+            sequence_number : 2,
             ip: [1, 2, 3, 4].to_vec(),
             port : 1234,
         }];
 
         let pkt_type = packet::Type::Short;
-        pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
+        let temp = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
         let Some((server_ip, server_port)) = pipe.server.last_observed_address
         else {panic!("Wrong setup")};
 
         assert_eq!([1, 2, 3, 4].to_vec(), server_ip);
         assert_eq!(1234, server_port);
+    }
+    
+    #[test]
+    fn wrong_observed_address_sequence(){
+        // Configure server
+        let mut server_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        server_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        server_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        server_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        server_config.set_initial_max_data(30);
+        server_config.set_initial_max_stream_data_bidi_local(15);
+        server_config.set_initial_max_stream_data_bidi_remote(15);
+        server_config.set_initial_max_streams_bidi(3);
+
+        // Configure client
+        let mut client_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        client_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        client_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        client_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        client_config.set_initial_max_data(30);
+        client_config.set_initial_max_stream_data_bidi_local(15);
+        client_config.set_initial_max_stream_data_bidi_remote(15);
+        client_config.set_initial_max_streams_bidi(3);
+
+        // Configure client and server in mode 0 (can send an OBSERVED_ADDRESS but do not want to receive one).
+        server_config.set_address_discovery(Some(2));
+        client_config.set_address_discovery(Some(1));
+
+        // Perform initial handshake.
+        let mut pipe = testing::Pipe::with_client_and_server_config(&mut client_config, &mut server_config).unwrap();
+        assert_eq!(pipe.handshake(), Ok(()));
+
+        let mut buf = [0; 65535];
+        // Client sends OBSERVED_ADDRESS on local unidirectional stream.
+        let frames = [frame::Frame::ObservedAddress {
+            sequence_number : 1,
+            ip: [1, 2, 3, 4].to_vec(),
+            port : 1234,
+        }];
+
+        // Setup a previous observed address and sequence number
+        let ip = [5, 6, 7, 8].to_vec();
+        let port = 4321;
+        pipe.server.sequence_number = 3;
+        pipe.server.last_observed_address = Some((ip, port));
+        
+        let pkt_type = packet::Type::Short;
+        let temp = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
+        let Some((server_ip, server_port)) = pipe.server.last_observed_address
+        else {panic!("Wrong setup")};
+
+        assert_eq!([5, 6, 7, 8].to_vec(), server_ip);
+        assert_eq!(4321, server_port);
     }
 
     #[test]
