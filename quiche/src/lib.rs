@@ -417,7 +417,7 @@ use std::str::FromStr;
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
-
+use chrono::{DateTime, Utc};
 use smallvec::SmallVec;
 
 /// The current QUIC wire version.
@@ -496,7 +496,7 @@ const DEFAULT_INITIAL_CONGESTION_WINDOW_PACKETS: usize = 10;
 const MAX_CRYPTO_STREAM_OFFSET: u64 = 1 << 16;
 
 // The maximum number of times the peer can change its address in one minute.
-const MAX_ADDRESS_CHANGES: u8 = 4;
+const MAX_OBSERVED_ADDRESS_CHANGES: usize = 4;
 
 /// A specialized [`Result`] type for quiche operations.
 ///
@@ -895,7 +895,8 @@ impl Config {
             track_unknown_transport_params: None,
         })
     }
-
+    
+    /// Sets the address discovery mode.
     pub fn set_address_discovery(&mut self, mode: Option<u64>) {
         self.local_transport_params.address_discovery = mode;
     }
@@ -1617,6 +1618,9 @@ pub struct Connection {
     /// Last observed address
     last_observed_address: Option<(Vec<u8>, u16)>,
 
+    /// Timestamps of the last changes of observed address
+    observed_address_timestamps: Vec<DateTime<Utc>>,
+
     /// Peer's last address
     last_peer_address: Option<SocketAddr>,
 }
@@ -2073,6 +2077,8 @@ impl Connection {
             address_discovery: config.local_transport_params.address_discovery,
 
             last_observed_address: None,
+
+            observed_address_timestamps: Vec::new(),
 
             last_peer_address: None,
         };
@@ -7066,6 +7072,17 @@ impl Connection {
                         ip,
                         port
                     );
+
+                    let now: DateTime<Utc> = Utc::now();
+                    self.observed_address_timestamps.push(now);
+                    // Check if the timestamp at index 4 is within 1 minute of `now`
+                    if let Some(ts) = self.observed_address_timestamps.get(MAX_OBSERVED_ADDRESS_CHANGES) {
+                        let diff = (*ts - now).num_seconds().abs(); // time difference in seconds (absolute)
+                        if diff < 60 {
+                            return Err(Error::UnexpectedOAFrame)
+                        }
+                    }
+
                     if sequence_number > self.sequence_number{
                         self.last_observed_address = Some((ip, port));
                         self.sequence_number = self.sequence_number+1;
@@ -9443,7 +9460,7 @@ mod tests {
         }];
 
         let pkt_type = packet::Type::Short;
-        let temp = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
+        let _ = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
         let Some((server_ip, server_port)) = pipe.server.last_observed_address
         else {panic!("Wrong setup")};
 
@@ -9508,12 +9525,72 @@ mod tests {
         pipe.server.last_observed_address = Some((ip, port));
 
         let pkt_type = packet::Type::Short;
-        let temp = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
+        let _ = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
         let Some((server_ip, server_port)) = pipe.server.last_observed_address
         else {panic!("Wrong setup")};
 
         assert_eq!([5, 6, 7, 8].to_vec(), server_ip);
         assert_eq!(4321, server_port);
+    }
+
+    #[test]
+    fn too_many_observed_address_received(){
+        // Configure server
+        let mut server_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        server_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        server_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        server_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        server_config.set_initial_max_data(30);
+        server_config.set_initial_max_stream_data_bidi_local(15);
+        server_config.set_initial_max_stream_data_bidi_remote(15);
+        server_config.set_initial_max_streams_bidi(3);
+
+        // Configure client
+        let mut client_config = Config::new(crate::PROTOCOL_VERSION).unwrap();
+        client_config
+            .load_cert_chain_from_pem_file("examples/cert.crt")
+            .unwrap();
+        client_config
+            .load_priv_key_from_pem_file("examples/cert.key")
+            .unwrap();
+        client_config
+            .set_application_protos(&[b"proto1", b"proto2"])
+            .unwrap();
+        client_config.set_initial_max_data(30);
+        client_config.set_initial_max_stream_data_bidi_local(15);
+        client_config.set_initial_max_stream_data_bidi_remote(15);
+        client_config.set_initial_max_streams_bidi(3);
+
+        // Configure client and server in mode 0 (can send an OBSERVED_ADDRESS but do not want to receive one).
+        server_config.set_address_discovery(Some(2));
+        client_config.set_address_discovery(Some(1));
+
+        // Perform initial handshake.
+        let mut pipe = testing::Pipe::with_client_and_server_config(&mut client_config, &mut server_config).unwrap();
+        assert_eq!(pipe.handshake(), Ok(()));
+
+        let mut buf = [0; 65535];
+        // Client sends OBSERVED_ADDRESS on local unidirectional stream.
+        let frames = [frame::Frame::ObservedAddress {
+            sequence_number : 1,
+            ip: [1, 2, 3, 4].to_vec(),
+            port : 1234,
+        }];
+
+        let pkt_type = packet::Type::Short;
+        for _i in 0..4{
+            let _ = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
+        }
+        assert_eq!(
+            pipe.send_pkt_to_server(pkt_type, &frames, &mut buf),
+            Err(Error::UnexpectedOAFrame),
+        );
     }
 
     #[test]
@@ -18102,7 +18179,6 @@ pub use crate::packet::Type;
 pub use crate::path::PathEvent;
 pub use crate::path::PathStats;
 pub use crate::path::SocketAddrIter;
-use crate::rand::{rand_u64, rand_u64_uniform};
 pub use crate::recovery::congestion::CongestionControlAlgorithm;
 
 pub use crate::stream::StreamIter;
