@@ -1616,6 +1616,9 @@ pub struct Connection {
 
     /// Last observed address
     last_observed_address: Option<(Vec<u8>, u16)>,
+
+    /// Peer's last address
+    last_peer_address: Option<SocketAddr>,
 }
 
 /// Creates a new server-side connection.
@@ -2070,6 +2073,8 @@ impl Connection {
             address_discovery: config.local_transport_params.address_discovery,
 
             last_observed_address: None,
+
+            last_peer_address: None,
         };
 
         if let Some(odcid) = odcid {
@@ -4014,27 +4019,38 @@ impl Connection {
             // Create OBSERVED_ADDRESS frame.
             if ((self.address_discovery == Some(0)) || (self.address_discovery == Some(2)))
                 && ((self.peer_transport_params.address_discovery == Some(1)) || (self.peer_transport_params.address_discovery == Some(2))) {
-                let ip = path.peer_addr().ip();
-                let ip_vec = match ip {
-                    IpAddr::V4(v4) => v4.octets().to_vec(),
-                    IpAddr::V6(v6) => v6.octets().to_vec(),
-                };
 
-                self.sequence_number = self.sequence_number + 1;
+                // Check if the peer address has changed.
+                let mut must_send = false;
+                if self.last_peer_address != Some(path.peer_addr()){
+                    self.last_peer_address = Some(path.peer_addr());
+                    must_send = true;
+                } else {
+                    // Peer address has not changed, we don't send an observed address frame
+                }
+
+                if must_send {
+
+                    let ip = path.peer_addr().ip();
+                    let ip_vec = match ip {
+                        IpAddr::V4(v4) => v4.octets().to_vec(),
+                        IpAddr::V6(v6) => v6.octets().to_vec(),
+                    };
+
+                    self.sequence_number = self.sequence_number + 1;
 
 
-                let frame = frame::Frame::ObservedAddress {
-                    sequence_number: self.sequence_number,
-                    ip: ip_vec,
-                    port: path.peer_addr().port(),
-                };
+                    let frame = frame::Frame::ObservedAddress {
+                        sequence_number: self.sequence_number,
+                        ip: ip_vec,
+                        port: path.peer_addr().port(),
+                    };
 
-                if push_frame_to_pkt!(b, frames, frame, left) {
-                    // self.sequence_number = self.sequence_number + 1;
-
-                    has_data = true;
-                    ack_eliciting = true;
-                    in_flight = true;
+                    if push_frame_to_pkt!(b, frames, frame, left) {
+                        has_data = true;
+                        ack_eliciting = true;
+                        in_flight = true;
+                    }
                 }
             }
 
@@ -7050,11 +7066,11 @@ impl Connection {
                         ip,
                         port
                     );
-                    if (sequence_number > self.sequence_number){
+                    if sequence_number > self.sequence_number{
                         self.last_observed_address = Some((ip, port));
                         self.sequence_number = self.sequence_number+1;
                     }
-                    else { 
+                    else {
                         println!("seq num conn {} is greater than seq num received", self.sequence_number);
                     }
 
@@ -9434,7 +9450,7 @@ mod tests {
         assert_eq!([1, 2, 3, 4].to_vec(), server_ip);
         assert_eq!(1234, server_port);
     }
-    
+
     #[test]
     fn wrong_observed_address_sequence(){
         // Configure server
@@ -9490,7 +9506,7 @@ mod tests {
         let port = 4321;
         pipe.server.sequence_number = 3;
         pipe.server.last_observed_address = Some((ip, port));
-        
+
         let pkt_type = packet::Type::Short;
         let temp = pipe.send_pkt_to_server(pkt_type, &frames, &mut buf);
         let Some((server_ip, server_port)) = pipe.server.last_observed_address
